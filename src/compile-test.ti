@@ -1,0 +1,28 @@
+LBL A
+EXCXT
+5
+$loopReg = 01
+STO $loopReg
+EXCXT
+:startLoop
+ADD
+1
+RESULT
+DSZ $loopReg, :startLoop
+GTO :crazyTime
+:end
+STOP
+RST
+:crazyTime
+$sqrtReg = 02
+$origReg = 01
+PAUSE
+sto $origReg
+SQRT
+STO $sqrtReg
+RCL $origReg
+LOG
+MUL
+RCL $origReg
+RESULT
+GTO :end
