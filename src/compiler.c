@@ -303,7 +303,7 @@ return_val print_instr_to_file(FILE* out, int reg_pos, raw_instruction instr) {
         case instyp_common_instr: {
             input_instructions instruction = instr.instr.common_instr;
             reg_data = (int)instruction;
-            if(reg_data < 10) return -1; // Invalid instruction passed
+            if(reg_data < 10) return rv_from_code(COMPILER_FILEPRT_INVALID_INSTR); // Invalid instruction passed
             break;
         }
 
@@ -472,7 +472,7 @@ return_val print_dec_to_file(FILE* out, int* reg_pos, double number, unsigned in
         else current_digit = (char)(number_dec);
 
         // Print this digit to file
-        return_val result = print_instr_to_file(out, (*reg_pos)++, ri_from_number(current_digit))
+        return_val result = print_instr_to_file(out, (*reg_pos)++, ri_from_number(current_digit));
         if(!is_success(result)) return result;
 
         // Remove the last digit and decrement the size
@@ -497,7 +497,7 @@ return_val print_number_instr(FILE* out, int* reg_pos, double number, unsigned i
     if(number == 0) {
         // Edge case: log10 of zero is -inf
         return_val result = print_instr_to_file(out, (*reg_pos)++, ri_from_number(0));
-        if(!is_success(result)) return result;
+        if(!is_success(result)) return rv_nested(result, COMPILER_PRINTNUM_ERROR_PRINTING_ZERO);
     }
     // If the number is negative, invert
     if(number < 0) number *= -1;
@@ -506,9 +506,9 @@ return_val print_number_instr(FILE* out, int* reg_pos, double number, unsigned i
     long number_int = (long)number;
     // Get the amount of digits of the number
     int number_digits = (int)(log10(number_int) + 1);
-    // Now convert the number to decimal
-    if(!print_dec_to_file(out, reg_pos, number_int / pow(10, number_digits), number_digits))
-        return -1; 
+    // Now convert the number to decimal and print the integer part
+    return_val result = print_dec_to_file(out, reg_pos, number_int / pow(10, number_digits), number_digits);
+    if(!is_success(result)) return rv_nested(result, COMPILER_PRINTNUM_ERROR_PRINTING_INT);
     // Decrement the size
     size -= number_digits;
 
@@ -517,18 +517,18 @@ return_val print_number_instr(FILE* out, int* reg_pos, double number, unsigned i
     
     // Decrement it once for the decimal point
     size--;
-    if(print_instr_to_file(out, (*reg_pos)++, ri_from_ucommon(ulabel_DEC)) != 0)
-        return -2;
+    result = print_instr_to_file(out, (*reg_pos)++, ri_from_ucommon(ulabel_DEC));
+    if(!is_success(result)) return rv_nested(result, COMPILER_PRINTNUM_ERROR_PRINTING_DOT);
     // Keep decrementing until size runs out
-    if(!print_dec_to_file(out, reg_pos, number, size))
-        return -3;
+    result = print_dec_to_file(out, reg_pos, number, size);
+    if(!is_success(result)) return rv_nested(result, COMPILER_PRINTNUM_ERROR_PRINTING_DEC);
 
     return rv_from_success();
 }
 
-int convert_line_to_instr(input_line line, FILE* out, int* reg_pos) {
+return_val convert_line_to_instr(input_line line, FILE* out, int* reg_pos) {
     // Saves the status of file call operations
-    int status = 0;
+    return_val status = rv_from_success();
     // In case this is one of those merged indirect instructions
     bool merged_ind = false;
 
@@ -540,8 +540,8 @@ int convert_line_to_instr(input_line line, FILE* out, int* reg_pos) {
     // Check for special instructions
     switch(line.instruction) {
         case instr_number: {
-            if(print_number_instr(out, reg_pos, line.data.number_instr.number, line.data.number_instr.size) != 0)
-                return -1;
+            status = print_number_instr(out, reg_pos, line.data.number_instr.number, line.data.number_instr.size);
+            if(!is_success(status)) return status;
             break;
         }
 
@@ -550,20 +550,21 @@ int convert_line_to_instr(input_line line, FILE* out, int* reg_pos) {
             // Create a new association for this register position
             add_stored_register(*reg_pos, line.data.prog_pointer);
             // Failed memory allocation
-            if(stored_reg_index == NULL) return -4;
-            return 0;
+            if(stored_reg_index == NULL) return rv_from_code(COMPILER_CANNOT_STORE_REG_MAP);
+            return rv_from_success();
         }
 
         // In case of a program pointer or a variable just return invalid
         case reg_variable:
-            return 0;
+            return rv_from_success();
 
         case ret_alias: {
             // Handle the return alias to INV SBR, using SBR if RETURN has been itself inverted
             if(!line.inverse) status = print_instr_to_file(out, (*reg_pos)++, ri_from_ucommon(ulabel_INV));
-            if(status != 0) return -5;
+            if(!is_success(status)) return status;
             status = print_instr_to_file(out, (*reg_pos)++, ri_from_common(instr_SBR));
-            return 0;
+            if(!is_success(status)) return status;
+            return rv_from_success();
         }
 
         // Cases for indirect instructions
@@ -590,7 +591,7 @@ int convert_line_to_instr(input_line line, FILE* out, int* reg_pos) {
         default: status = print_instr_to_file(out, (*reg_pos)++, ri_from_common(line.instruction));
     }
 
-    if(status != 0) return -6;
+    if(!is_success(status)) return status;
 
     // Iterate through all parameters
     for(int param = 0; param < line.parameters_amount; param++) {
@@ -600,14 +601,16 @@ int convert_line_to_instr(input_line line, FILE* out, int* reg_pos) {
         // If this instruction has merged indirect
         if(merged_ind && param == 0) {
             // Just print the code of the indirect register and continue
-            if(print_instr_to_file(out, (*reg_pos)++, ri_from_code(current_parameter.data.value)) != 0)
-                return -8;
+            return_val result = print_instr_to_file(out, (*reg_pos)++, ri_from_code(current_parameter.data.value));
+            if(!is_success(result)) return rv_nested_location(result, COMPILER_MERGED_IND_PRINT_ERROR, param);
             continue;
         } else if(current_parameter.indirect) { // If it isn't merged but still indirect
             // Print the IND code
-            if(print_instr_to_file(out, (*reg_pos)++, raw_ind_instr()) != 0) return -9;
+            return_val result = print_instr_to_file(out, (*reg_pos)++, raw_ind_instr());
             // Print the value tied to this code
-            if(print_instr_to_file(out, (*reg_pos)++, ri_from_code(current_parameter.data.value)) != 0) return -10;
+            if(is_success(result)) result = print_instr_to_file(out, (*reg_pos)++, ri_from_code(current_parameter.data.value));
+            // In case of any error
+            if(!is_success(result)) return rv_nested_location(result, COMPILER_IND_PRINT_ERROR, param);
             continue;
         }
 
@@ -616,38 +619,36 @@ int convert_line_to_instr(input_line line, FILE* out, int* reg_pos) {
             case register_index:
             case operation:
                 status = print_instr_to_file(out, (*reg_pos)++, ri_from_code(current_parameter.data.value));
-                break;
+                if(!is_success(status)) return rv_nested_location(status, COMPILER_ERROR_PRINT_CODE, param);
 
             case digit:
             case decimal_amount:
                 status = print_instr_to_file(out, (*reg_pos)++, ri_from_digit(current_parameter.data.value));
-                break;
+                if(!is_success(status)) return rv_nested_location(status, COMPILER_ERROR_PRINT_DIGIT, param);
 
             case label:
                 status = print_instr_to_file(out, (*reg_pos)++, ri_from_label(current_parameter.data.label));
-                break;
+                if(!is_success(status)) return rv_nested_location(status, COMPILER_ERROR_PRINT_LABEL, param);
 
             case location:
                 // Check if it's a location or a progpointer
                 if(current_parameter.is_value) { // Program pointer
                     // Invalid program index
-                    if(current_parameter.data.value >= stored_reg_index_size && stored_reg_index == NULL) return -3;
+                    if(current_parameter.data.value >= stored_reg_index_size && stored_reg_index == NULL) return rv_from_location(COMPILER_INVALID_PROG_INDEX, param);
                     // Print the reg index instruction to file
                     else {
                         status = print_instr_to_file(out, (*reg_pos)++, ri_from_program_index(current_parameter.data.value));
-                        status = status == 0 ? print_instr_to_file(out, (*reg_pos)++, ri_from_program_index(-current_parameter.data.value - 1)) : status;
+                        status = is_success(status) ? print_instr_to_file(out, (*reg_pos)++, ri_from_program_index(-current_parameter.data.value - 1)) : status;
                     }
                 } else status = print_instr_to_file(out, (*reg_pos)++, ri_from_label(current_parameter.data.label));
-                break;
+                if(!is_success(status)) return rv_nested_location(status, COMPILER_ERROR_PRINT_LOCATION, param);
 
-            default: return -2; // Invalid argument
+            default: return rv_from_location(COMPILER_INVALID_PARAMETER_TYPE, param); // Invalid argument
         }
-
-        if(status != 0) return -7;
     }
 
     // Success
-    return 0;
+    return rv_from_success();
 }
 
 /*
@@ -674,10 +675,10 @@ int convert_line_to_instr(input_line line, FILE* out, int* reg_pos) {
  * than 99, then -1 is returned.
  * This function returns 0 on success.
 */
-int execute_replace(FILE* out, int value, bool single_digit) {
+return_val execute_replace(FILE* out, int value, bool single_digit) {
     // Check the input value
-    if(value < 0 || value > 99) return -1;
-    if(out == NULL) return -1;
+    if(value < 0 || single_digit && value > 9 || value > 99) return rv_from_code(POSTCOMP_INVALID_RANGE);
+    if(out == NULL) return rv_from_code(POSTCOMP_INVALID_FILE);
 
     /* 
      * Static value string conversion since we know 
@@ -702,41 +703,48 @@ int execute_replace(FILE* out, int value, bool single_digit) {
     }
 
     // Print out to file
-    fprintf(out, "%02d\t[%.*s]", value, value_str_size, value_str);
+    if(fprintf(out, "%02d\t[%.*s]", value, value_str_size, value_str) < 0)
+        return rv_from_code(POSTCOMP_FAILED_FILE_WRITE);
 
     // Success
-    return 0;
+    return rv_from_success();
 }
 
-int final_compile(FILE* file) {
+return_val final_compile(FILE* file) {
     // Iterate through every single progpointer call
     for(int current_call = 0; current_call < stored_progpointer_size; current_call++) {
         stored_progpointer current_progpointer = stored_progpointer_call[current_call];
 
         // Seek the file to the current call's position
-        if(fseek(file, current_progpointer.file_position, SEEK_SET) != 0) return -1;
+        if(fseek(file, current_progpointer.file_position, SEEK_SET) != 0)
+            return rv_from_code(POSTCOMP_CANNOT_SEEK);
 
         // Check if the stored reg index isn't out of bounds
         if(current_progpointer.reg_index < 0 
             || current_progpointer.reg_index >= stored_reg_index_size
-        ) return -2;
+        ) return rv_from_code(POSTCOMP_INVALID_REGINDEX_POS);
         // Retrieve the stored register
         int stored_register = stored_reg_index[current_progpointer.reg_index];
 
         // Now check the current state
+        return_val replace_status;
         if(current_progpointer.part) {
             // Read only the first digit of the three digit number
             // Which is the number divided by 100
-            if(
-                execute_replace(file, (int)(stored_register / 100), true) != 0
-            ) return -3;
+            replace_status = execute_replace(file, (int)(stored_register / 100), true);
+            if(!is_success(replace_status)) {
+                replace_status.location = current_call;
+                return replace_status;
+            }
         } else {
             // Read the last two digits of the number
-            if(
-                execute_replace(file, stored_register % 100, false) != 0
-            ) return -4;
+            replace_status = execute_replace(file, stored_register % 100, false);
+            if(!is_success(replace_status)) {
+                replace_status.location = current_call;
+                return replace_status;
+            }
         }
     }
 
-    return 0;
+    return rv_from_success();
 }

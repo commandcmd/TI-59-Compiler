@@ -104,7 +104,7 @@ int main(int argc, char** argv) {
 
             // Otherwise print the error
             fprintf(stderr, "Parse error at line %d", line_counter);
-            if(parse_result.location >= 0) fprintf(stderr, " - Argument %d", parse_result.location);
+            if(parse_result.location >= 0) fprintf(stderr, " - Argument %d", parse_result.location + 1);
             fprintf(stderr, "\n%s\n", error_to_str(parse_result.error));
             free(current_line);
             clear_parser_memory();
@@ -120,8 +120,9 @@ int main(int argc, char** argv) {
 
         if(!is_success(compile_result)) {
             fprintf(stderr, "Compilation error at line %d", line_counter);
-            if(parse_result.location >= 0) fprintf(stderr, " - Location %d", parse_result.location);
-            fprintf(stderr, ":\n%s\n", error_to_str(parse_result.error));
+            if(compile_result.location >= 0) fprintf(stderr, " - Argument %d", compile_result.location + 1);
+            fprintf(stderr, ":\n%s\n", error_to_str(compile_result.error));
+            if(compile_result.cause != SUCCESS) fprintf(stderr, "\n\tCause: %d\n", error_to_str(compile_result.cause));
             clear_parser_memory();
             free_compiler_mem();
             return 2;
@@ -135,8 +136,8 @@ int main(int argc, char** argv) {
     return_val final_result = final_compile(output_file);
     if(!is_success(final_result)) {
         fprintf(stderr, "Post-compilation error at line %d", line_counter);
-        if(parse_result.location >= 0) fprintf(stderr, " - Location %d", parse_result.location);
-        fprintf(stderr, ":\n%s\n", error_to_str(parse_result.error));
+        if(final_result.location >= 0) fprintf(stderr, " - Location %d", final_result.location + 1);
+        fprintf(stderr, ":\n%s\n", error_to_str(final_result.error));
         free_compiler_mem();
         return 3;
     }

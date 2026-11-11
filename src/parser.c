@@ -1134,7 +1134,7 @@ return_val parse_arguments(char* line_buffer, size_t bufsize, size_t instruction
                 // If this is a program pointer
                 if(packed_arg == PROG_POINTER_TOKEN) {
                     // If this isn't a location destination then error out
-                    if(current_param->type != location) return rv_from_location(PARSER_ARG_LABEL_UNEXPECTED_PROGPOINTER);
+                    if(current_param->type != location) return rv_from_location(PARSER_ARG_LABEL_UNEXPECTED_PROGPOINTER, param);
                     // Retrieve this program pointer's ID
                     int parsed_progpointer;
                     if(!get_element_map(&(parser_state.progpointer_map), &line_buffer[param_token + 1], param_token_size - 1, &parsed_progpointer)) {
@@ -1185,7 +1185,7 @@ return_val parse_line(input_line* output, char* line_buffer, size_t bufsize) {
     if(!is_success(result)) return result;
     // Now allocate the space for the instruction parameters
     if(!create_arguments_allocation(instruction, inverted, output))
-        return rv_from_code();
+        return rv_from_code(PARSER_ARG_ALLOC_ERROR);
 
     // If the instruction is a number, then save it in the structure
     if(instruction == instr_number || instruction == prog_pointer) {

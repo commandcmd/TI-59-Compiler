@@ -108,6 +108,10 @@ typedef struct instruction_str {
  *  002 02    [02]
  *  So that the user knows they need to type PGM and
  *  then the number 02)
+ * The location return value of this function represents
+ * the argument which the function was compiling while
+ * encountering the error.
+ * This function might return nested error codes.
  */
 return_val convert_line_to_instr(input_line in, FILE* out, int* reg_pos);
 
@@ -117,6 +121,12 @@ return_val convert_line_to_instr(input_line in, FILE* out, int* reg_pos);
  * entire file and replaces all the dynamic program
  * pointer references with the relative actual instruction
  * line codes for the program pointer.
+ * The location integer in the return value of this function,
+ * in case of error, contains the index of the actual 
+ * instruction that was being replaced when the error
+ * occurred, if the instruction to replace was the fourth
+ * one in the file to be replaced, the location value
+ * contains the number '3'.
  *
  * Note that this must be ran BEFORE calling free_compiler_mem()
  * otherwise the references to the program pointers are not
