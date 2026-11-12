@@ -105,15 +105,12 @@ int main(int argc, char** argv) {
             // Otherwise print the error
             fprintf(stderr, "Parse error at line %d", line_counter);
             if(parse_result.location >= 0) fprintf(stderr, " - Argument %d", parse_result.location + 1);
-            fprintf(stderr, "\n%s\n", error_to_str(parse_result.error));
+            fprintf(stderr, ":\n'%.*s'\n%s\n", current_line_len, current_line, error_to_str(parse_result.error));
             free(current_line);
             clear_parser_memory();
             free_compiler_mem();
             return 1;
         }
-
-        // Free the memory for the obtained line
-        free(current_line);
 
         // Now that a structure is present, compile the parsed line in the output file
         return_val compile_result = convert_line_to_instr(parse_output, output_file, &instruction_counter);
@@ -121,12 +118,15 @@ int main(int argc, char** argv) {
         if(!is_success(compile_result)) {
             fprintf(stderr, "Compilation error at line %d", line_counter);
             if(compile_result.location >= 0) fprintf(stderr, " - Argument %d", compile_result.location + 1);
-            fprintf(stderr, ":\n%s\n", error_to_str(compile_result.error));
+            fprintf(stderr, ":\n'%.*s'\n%s\n", current_line_len, current_line, error_to_str(compile_result.error));
             if(compile_result.cause != SUCCESS) fprintf(stderr, "\n\tCause: %d\n", error_to_str(compile_result.cause));
             clear_parser_memory();
             free_compiler_mem();
             return 2;
         }
+        
+        // Free the memory for the obtained line
+        free(current_line);
     } while(!feof(input_file));
 
     // Free the parser memory, won't read from input file again

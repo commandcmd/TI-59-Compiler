@@ -620,15 +620,18 @@ return_val convert_line_to_instr(input_line line, FILE* out, int* reg_pos) {
             case operation:
                 status = print_instr_to_file(out, (*reg_pos)++, ri_from_code(current_parameter.data.value));
                 if(!is_success(status)) return rv_nested_location(status, COMPILER_ERROR_PRINT_CODE, param);
+                break;
 
             case digit:
             case decimal_amount:
                 status = print_instr_to_file(out, (*reg_pos)++, ri_from_digit(current_parameter.data.value));
                 if(!is_success(status)) return rv_nested_location(status, COMPILER_ERROR_PRINT_DIGIT, param);
+                break;
 
             case label:
                 status = print_instr_to_file(out, (*reg_pos)++, ri_from_label(current_parameter.data.label));
                 if(!is_success(status)) return rv_nested_location(status, COMPILER_ERROR_PRINT_LABEL, param);
+                break;
 
             case location:
                 // Check if it's a location or a progpointer
@@ -642,6 +645,7 @@ return_val convert_line_to_instr(input_line line, FILE* out, int* reg_pos) {
                     }
                 } else status = print_instr_to_file(out, (*reg_pos)++, ri_from_label(current_parameter.data.label));
                 if(!is_success(status)) return rv_nested_location(status, COMPILER_ERROR_PRINT_LOCATION, param);
+                break;
 
             default: return rv_from_location(COMPILER_INVALID_PARAMETER_TYPE, param); // Invalid argument
         }
